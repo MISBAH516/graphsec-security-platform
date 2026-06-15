@@ -298,8 +298,8 @@ python wifi_monitor.py
 
 **Syed Misbah**  
 Backend Developer | Cybersecurity Enthusiast  
-📧 your@email.com  
-🔗 [LinkedIn](https://linkedin.com/in/your-profile)
+📧 syedmisbahuddin516@gmail.com  
+🔗 [LinkedIn](https://www.linkedin.com/in/syed-misbah-uddin-73823b271/)
 
 ---
 
