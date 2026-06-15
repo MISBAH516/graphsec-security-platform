@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>GraphSec — Security Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg:        #080c10;
+    --surface:   #0d1117;
+    --border:    #1c2a3a;
+    --accent:    #00d4ff;
+    --accent2:   #ff4444;
+    --accent3:   #00ff88;
+    --warn:      #ffaa00;
+    --text:      #c9d1d9;
+    --muted:     #4a5568;
+    --font-mono: 'Share Tech Mono', monospace;
+    --font-ui:   'Rajdhani', sans-serif;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:var(--font-ui); min-height:100vh; overflow-x:hidden; }
+
+  /* Scanline overlay */
+  body::before {
+    content:''; position:fixed; top:0; left:0; width:100%; height:100%;
+    background:repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,212,255,0.015) 2px, rgba(0,212,255,0.015) 4px);
+    pointer-events:none; z-index:999;
+  }
+
+  /* ── AUTH SCREEN ───────────────────────────── */
+  #auth-screen {
+    display:flex; align-items:center; justify-content:center;
+    min-height:100vh;
+    background: radial-gradient(ellipse at 50% 0%, rgba(0,212,255,0.08) 0%, transparent 60%);
+  }
+  .auth-box {
+    background:var(--surface); border:1px solid var(--border);
+    border-top:2px solid var(--accent); padding:40px;
+    width:420px; position:relative;
+    box-shadow: 0 0 40px rgba(0,212,255,0.05), 0 0 80px rgba(0,0,0,0.4);
+  }
+  .auth-logo { text-align:center; margin-bottom:32px; }
+  .auth-logo .logo-text { font-family:var(--font-mono); font-size:28px; color:var(--accent); letter-spacing:4px; }
+  .auth-logo .logo-sub { font-size:11px; color:var(--muted); letter-spacing:6px; text-transform:uppercase; margin-top:4px; }
+
+  .tab-switcher { display:flex; margin-bottom:28px; border:1px solid var(--border); }
+  .tab-btn { flex:1; padding:10px; background:transparent; border:none; color:var(--muted); font-family:var(--font-ui); font-size:14px; font-weight:600; letter-spacing:1px; cursor:pointer; transition:.2s; text-transform:uppercase; }
+  .tab-btn.active { background:rgba(0,212,255,0.1); color:var(--accent); }
+
+  .form-group { margin-bottom:18px; }
+  .form-group label { display:block; font-size:11px; letter-spacing:2px; color:var(--muted); text-transform:uppercase; margin-bottom:6px; }
+  .form-group input {
+    width:100%; background:#0a0f15; border:1px solid var(--border); color:var(--text);
+    padding:11px 14px; font-family:var(--font-mono); font-size:14px;
+    outline:none; transition:.2s;
+  }
+  .form-group input:focus { border-color:var(--accent); box-shadow:0 0 0 2px rgba(0,212,255,0.1); }
+
+  .btn {
+    width:100%; padding:13px; background:transparent; border:1px solid var(--accent);
+    color:var(--accent); font-family:var(--font-ui); font-size:15px; font-weight:700;
+    letter-spacing:3px; text-transform:uppercase; cursor:pointer; transition:.2s; margin-top:4px;
+  }
+  .btn:hover { background:rgba(0,212,255,0.12); box-shadow:0 0 20px rgba(0,212,255,0.2); }
+  .btn.danger { border-color:var(--accent2); color:var(--accent2); }
+  .btn.danger:hover { background:rgba(255,68,68,0.1); }
+  .btn.success { border-color:var(--accent3); color:var(--accent3); }
+  .btn.success:hover { background:rgba(0,255,136,0.1); }
+  .btn.sm { width:auto; padding:7px 18px; font-size:12px; }
+
+  .msg { padding:10px 14px; margin-bottom:16px; font-family:var(--font-mono); font-size:13px; display:none; }
+  .msg.error { border-left:3px solid var(--accent2); background:rgba(255,68,68,0.08); color:var(--accent2); }
+  .msg.ok    { border-left:3px solid var(--accent3); background:rgba(0,255,136,0.08); color:var(--accent3); }
+
+  /* ── DASHBOARD ─────────────────────────────── */
+  #app { display:none; }
+
+  .topbar {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 28px; background:var(--surface); border-bottom:1px solid var(--border);
+    position:sticky; top:0; z-index:100;
+  }
+  .topbar-logo { font-family:var(--font-mono); font-size:18px; color:var(--accent); letter-spacing:3px; }
+  .topbar-user { display:flex; align-items:center; gap:12px; }
+  .user-badge { font-size:13px; color:var(--muted); }
+  .role-badge {
+    padding:3px 10px; font-size:11px; letter-spacing:1px; text-transform:uppercase;
+    font-weight:700; background:rgba(0,212,255,0.1); color:var(--accent); border:1px solid rgba(0,212,255,0.3);
+  }
+  .role-badge.admin { background:rgba(255,170,0,0.1); color:var(--warn); border-color:rgba(255,170,0,0.3); }
+
+  .layout { display:flex; min-height:calc(100vh - 55px); }
+
+  .sidebar {
+    width:200px; background:var(--surface); border-right:1px solid var(--border);
+    padding:20px 0; flex-shrink:0;
+  }
+  .nav-item {
+    display:flex; align-items:center; gap:10px; padding:12px 20px;
+    color:var(--muted); cursor:pointer; transition:.2s; font-size:14px;
+    font-weight:600; letter-spacing:1px; text-transform:uppercase; border-left:3px solid transparent;
+  }
+  .nav-item:hover { color:var(--text); background:rgba(255,255,255,0.03); }
+  .nav-item.active { color:var(--accent); border-left-color:var(--accent); background:rgba(0,212,255,0.05); }
+  .nav-icon { font-size:16px; }
+
+  .main { flex:1; padding:28px; overflow-y:auto; }
+
+  .page { display:none; }
+  .page.active { display:block; }
+
+  .page-title { font-size:22px; font-weight:700; letter-spacing:2px; color:var(--text); margin-bottom:24px; text-transform:uppercase; }
+
+  /* Stats cards */
+  .stats-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:16px; margin-bottom:28px; }
+  .stat-card {
+    background:var(--surface); border:1px solid var(--border); padding:20px;
+    position:relative; overflow:hidden;
+  }
+  .stat-card::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; }
+  .stat-card.blue::before  { background:var(--accent); }
+  .stat-card.red::before   { background:var(--accent2); }
+  .stat-card.green::before { background:var(--accent3); }
+  .stat-card.warn::before  { background:var(--warn); }
+  .stat-label { font-size:11px; letter-spacing:2px; color:var(--muted); text-transform:uppercase; margin-bottom:8px; }
+  .stat-value { font-family:var(--font-mono); font-size:36px; color:var(--text); }
+  .stat-card.blue  .stat-value { color:var(--accent); }
+  .stat-card.red   .stat-value { color:var(--accent2); }
+  .stat-card.green .stat-value { color:var(--accent3); }
+  .stat-card.warn  .stat-value { color:var(--warn); }
+
+  /* Table */
+  .table-wrap { background:var(--surface); border:1px solid var(--border); overflow:hidden; }
+  .table-header { display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid var(--border); }
+  .table-header h3 { font-size:13px; letter-spacing:2px; text-transform:uppercase; color:var(--muted); }
+  table { width:100%; border-collapse:collapse; }
+  th { padding:10px 20px; font-size:11px; letter-spacing:2px; text-transform:uppercase; color:var(--muted); text-align:left; border-bottom:1px solid var(--border); background:rgba(0,0,0,0.2); }
+  td { padding:12px 20px; font-size:14px; border-bottom:1px solid rgba(28,42,58,0.5); vertical-align:middle; }
+  tr:last-child td { border-bottom:none; }
+  tr:hover td { background:rgba(0,212,255,0.02); }
+
+  .badge {
+    padding:3px 10px; font-size:11px; font-weight:700; letter-spacing:1px; text-transform:uppercase;
+    display:inline-block;
+  }
+  .badge-low      { background:rgba(0,212,255,0.1);  color:var(--accent); }
+  .badge-medium   { background:rgba(255,170,0,0.1);  color:var(--warn); }
+  .badge-high     { background:rgba(255,68,68,0.1);  color:var(--accent2); }
+  .badge-critical { background:rgba(255,68,68,0.2);  color:#ff2020; border:1px solid rgba(255,68,68,0.4); }
+  .badge-open        { background:rgba(255,170,0,0.1); color:var(--warn); }
+  .badge-resolved    { background:rgba(0,255,136,0.1); color:var(--accent3); }
+  .badge-investigating { background:rgba(0,212,255,0.1); color:var(--accent); }
+  .badge-ignored     { background:rgba(74,85,104,0.2); color:var(--muted); }
+  .badge-admin { background:rgba(255,170,0,0.1); color:var(--warn); }
+  .badge-user  { background:rgba(0,212,255,0.1); color:var(--accent); }
+
+  .action-btns { display:flex; gap:8px; }
+
+  /* Form panel */
+  .form-panel { background:var(--surface); border:1px solid var(--border); padding:24px; margin-bottom:24px; }
+  .form-panel h3 { font-size:13px; letter-spacing:2px; text-transform:uppercase; color:var(--muted); margin-bottom:20px; }
+  .form-row { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .form-row.three { grid-template-columns:1fr 1fr 1fr; }
+  select {
+    width:100%; background:#0a0f15; border:1px solid var(--border); color:var(--text);
+    padding:11px 14px; font-family:var(--font-ui); font-size:14px; outline:none;
+  }
+  textarea {
+    width:100%; background:#0a0f15; border:1px solid var(--border); color:var(--text);
+    padding:11px 14px; font-family:var(--font-mono); font-size:13px; outline:none; resize:vertical; min-height:80px;
+  }
+
+  .empty-state { padding:40px; text-align:center; color:var(--muted); font-family:var(--font-mono); font-size:13px; }
+  .loading { animation:pulse 1.5s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+</style>
+</head>
+<body>
+
+<!-- AUTH SCREEN -->
+<div id="auth-screen">
+  <div class="auth-box">
+    <div class="auth-logo">
+      <div class="logo-text">GRAPHSEC</div>
+      <div class="logo-sub">Security Operations Platform</div>
+    </div>
+    <div class="tab-switcher">
+      <button class="tab-btn active" onclick="showTab('login')">Login</button>
+      <button class="tab-btn" onclick="showTab('register')">Register</button>
+    </div>
+    <div id="auth-msg" class="msg"></div>
+
+    <!-- Login -->
+    <div id="login-form">
+      <div class="form-group"><label>Email</label><input type="email" id="l-email" placeholder="admin@graphsec.io"/></div>
+      <div class="form-group"><label>Password</label><input type="password" id="l-pass" placeholder="••••••••"/></div>
+      <button class="btn" onclick="doLogin()">Access System</button>
+    </div>
+
+    <!-- Register -->
+    <div id="register-form" style="display:none">
+      <div class="form-group"><label>Username</label><input type="text" id="r-user" placeholder="john_doe"/></div>
+      <div class="form-group"><label>Email</label><input type="email" id="r-email" placeholder="john@example.com"/></div>
+      <div class="form-group"><label>Password</label><input type="password" id="r-pass" placeholder="Min 8 characters"/></div>
+      <button class="btn success" onclick="doRegister()">Create Account</button>
+    </div>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="app">
+  <div class="topbar">
+    <div class="topbar-logo">⬡ GRAPHSEC</div>
+    <div class="topbar-user">
+      <span class="user-badge" id="topbar-username"></span>
+      <span class="role-badge" id="topbar-role"></span>
+      <button class="btn sm danger" onclick="logout()">Logout</button>
+    </div>
+  </div>
+
+  <div class="layout">
+    <div class="sidebar">
+      <div class="nav-item active" onclick="showPage('dashboard')"><span class="nav-icon">◈</span> Dashboard</div>
+      <div class="nav-item" onclick="showPage('threats')"><span class="nav-icon">⚠</span> Threats</div>
+      <div class="nav-item" onclick="showPage('events')"><span class="nav-icon">⚡</span> Events</div>
+      <div class="nav-item" onclick="showPage('profile')"><span class="nav-icon">◉</span> Profile</div>
+      <div class="nav-item" id="admin-nav" style="display:none" onclick="showPage('admin')"><span class="nav-icon">★</span> Admin</div>
+    </div>
+
+    <div class="main">
+
+      <!-- DASHBOARD PAGE -->
+      <div class="page active" id="page-dashboard">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
+          <div class="page-title" style="margin-bottom:0">Security Overview</div>
+          <button class="btn sm" onclick="refreshAll()">⟳ Refresh</button>
+        </div>
+        <div class="stats-grid" id="stats-grid">
+          <div class="stat-card blue"><div class="stat-label">Total Threats</div><div class="stat-value" id="s-threats">—</div></div>
+          <div class="stat-card red"><div class="stat-label">Critical Threats</div><div class="stat-value" id="s-critical">—</div></div>
+          <div class="stat-card warn"><div class="stat-label">Open Events</div><div class="stat-value" id="s-open">—</div></div>
+          <div class="stat-card green"><div class="stat-label">Resolved</div><div class="stat-value" id="s-resolved">—</div></div>
+        </div>
+        <div class="table-wrap" style="margin-top:0">
+          <div class="table-header"><h3>⚡ Recent Auto-Detected Events</h3></div>
+          <table><thead><tr><th>Type</th><th>Description</th><th>Severity</th><th>Source IP</th><th>Time</th></tr></thead>
+          <tbody id="recent-events-tbody"><tr><td colspan="5" class="empty-state">Loading...</td></tr></tbody></table>
+        </div>
+      </div>
+
+      <!-- THREATS PAGE -->
+      <div class="page" id="page-threats">
+        <div class="page-title">Threat Management</div>
+        <div class="form-panel">
+          <h3>+ New Threat</h3>
+          <div class="form-group"><label>Title</label><input type="text" id="t-title" placeholder="e.g. SQL Injection Attempt"/></div>
+          <div class="form-group"><label>Description</label><textarea id="t-desc" placeholder="Describe the threat..."></textarea></div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Severity</label>
+              <select id="t-severity"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select>
+            </div>
+            <div class="form-group">
+              <label>Status</label>
+              <select id="t-status"><option value="open">Open</option><option value="investigating">Investigating</option><option value="resolved">Resolved</option></select>
+            </div>
+          </div>
+          <button class="btn" onclick="createThreat()">Submit Threat</button>
+        </div>
+        <div class="table-wrap">
+          <div class="table-header"><h3>Active Threats</h3></div>
+          <table><thead><tr><th>ID</th><th>Title</th><th>Severity</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+          <tbody id="threats-tbody"><tr><td colspan="6" class="empty-state">Loading...</td></tr></tbody></table>
+        </div>
+      </div>
+
+      <!-- EVENTS PAGE -->
+      <div class="page" id="page-events">
+        <div class="page-title">Security Events</div>
+        <div class="form-panel">
+          <h3>+ Log New Event</h3>
+          <div class="form-row">
+            <div class="form-group"><label>Event Type</label><input type="text" id="e-type" placeholder="e.g. Failed Login"/></div>
+            <div class="form-group"><label>Source IP</label><input type="text" id="e-ip" placeholder="192.168.1.1"/></div>
+          </div>
+          <div class="form-group"><label>Description</label><textarea id="e-desc" placeholder="Event details..."></textarea></div>
+          <div class="form-group">
+            <label>Severity</label>
+            <select id="e-severity"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select>
+          </div>
+          <button class="btn" onclick="logSecurityEvent()">Log Event</button>
+        </div>
+        <div class="table-wrap">
+          <div class="table-header"><h3>Event Log</h3></div>
+          <table><thead><tr><th>ID</th><th>Type</th><th>Source IP</th><th>Severity</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+          <tbody id="events-tbody"><tr><td colspan="7" class="empty-state">Loading...</td></tr></tbody></table>
+        </div>
+      </div>
+
+      <!-- PROFILE PAGE -->
+      <div class="page" id="page-profile">
+        <div class="page-title">My Profile</div>
+        <div class="form-panel" style="max-width:500px">
+          <h3>Update Profile</h3>
+          <div class="form-group"><label>Username</label><input type="text" id="p-username" placeholder="New username"/></div>
+          <div class="form-group"><label>Email</label><input type="email" id="p-email" placeholder="New email"/></div>
+          <div class="form-group"><label>New Password</label><input type="password" id="p-pass" placeholder="Leave blank to keep current"/></div>
+          <div id="profile-msg" class="msg"></div>
+          <button class="btn" onclick="updateProfile()">Save Changes</button>
+        </div>
+      </div>
+
+      <!-- ADMIN PAGE -->
+      <div class="page" id="page-admin">
+        <div class="page-title">Admin — User Management</div>
+        <div class="table-wrap">
+          <div class="table-header"><h3>All Users</h3><button class="btn sm" onclick="loadUsers()">Refresh</button></div>
+          <table><thead><tr><th>ID</th><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="users-tbody"><tr><td colspan="6" class="empty-state">Loading...</td></tr></tbody></table>
+        </div>
+      </div>
+
+    </div><!-- main -->
+  </div><!-- layout -->
+</div><!-- app -->
+
+<script>
+const API = 'http://192.168.100.11:8000';
+let accessToken = localStorage.getItem('access_token') || '';
+let refreshToken = localStorage.getItem('refresh_token') || '';
+let currentUser = null;
+
+// ── INIT ─────────────────────────────────────────────────────
+window.onload = async () => {
+  if (accessToken) { await loadApp(); }
+};
+
+async function apiFetch(path, opts={}) {
+  opts.headers = { 'Content-Type':'application/json', ...(accessToken ? {'Authorization':'Bearer '+accessToken} : {}), ...opts.headers };
+  let res = await fetch(API+path, opts);
+  if (res.status === 401 && refreshToken) {
+    // Try to refresh the token automatically
+    const r = await fetch(API+'/auth/refresh', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({refresh_token: refreshToken})
+    });
+    if (r.ok) {
+      const d = await r.json();
+      accessToken = d.access_token; refreshToken = d.refresh_token;
+      localStorage.setItem('access_token', accessToken);
+      localStorage.setItem('refresh_token', refreshToken);
+      opts.headers['Authorization'] = 'Bearer ' + accessToken;
+      res = await fetch(API+path, opts);
+    } else { logout(); return null; }
+  }
+  return res;
+}
+
+// ── AUTH ─────────────────────────────────────────────────────
+function showTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('active', (tab==='login'&&i===0)||(tab==='register'&&i===1)));
+  document.getElementById('login-form').style.display    = tab==='login'    ? 'block' : 'none';
+  document.getElementById('register-form').style.display = tab==='register' ? 'block' : 'none';
+  hideMsg('auth-msg');
+}
+
+function showMsg(id, text, type='error') {
+  const el = document.getElementById(id);
+  el.textContent = text; el.className = 'msg '+type; el.style.display = 'block';
+}
+function hideMsg(id) { const el = document.getElementById(id); if(el) { el.style.display='none'; } }
+
+async function doLogin() {
+  const email = document.getElementById('l-email').value.trim();
+  const password = document.getElementById('l-pass').value;
+  if (!email || !password) return showMsg('auth-msg','Please fill in all fields');
+  showMsg('auth-msg','Authenticating...','ok');
+  try {
+    const res = await fetch(API+'/auth/login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email, password}) });
+    const text = await res.text();
+    let data = {};
+    try { data = JSON.parse(text); } catch(e) { data = {detail: text}; }
+    if (!res.ok) return showMsg('auth-msg', data.detail || 'Login failed: '+res.status);
+    accessToken = data.access_token; refreshToken = data.refresh_token;
+    localStorage.setItem('access_token', accessToken);
+    localStorage.setItem('refresh_token', refreshToken);
+    await loadApp();
+  } catch(err) {
+    showMsg('auth-msg', 'Cannot connect to server. Is uvicorn running?');
+  }
+}
+
+async function doRegister() {
+  const username = document.getElementById('r-user').value.trim();
+  const email    = document.getElementById('r-email').value.trim();
+  const password = document.getElementById('r-pass').value;
+  if (!username || !email || !password) return showMsg('auth-msg','Please fill in all fields');
+  showMsg('auth-msg','Creating account...','ok');
+  try {
+    const res = await fetch(API+'/auth/register', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({username, email, password})
+    });
+    const text = await res.text();
+    let data = {};
+    try { data = JSON.parse(text); } catch(e) { data = {detail: text}; }
+    if (!res.ok) return showMsg('auth-msg', data.detail || 'Registration failed: '+res.status);
+    showMsg('auth-msg','Account created! Please login.','ok');
+    setTimeout(() => showTab('login'), 1500);
+  } catch(err) {
+    showMsg('auth-msg', 'Cannot connect to server. Is uvicorn running?');
+  }
+}
+
+function logout() {
+  accessToken = ''; refreshToken = ''; currentUser = null;
+  localStorage.removeItem('access_token'); localStorage.removeItem('refresh_token');
+  document.getElementById('auth-screen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+}
+
+async function loadApp() {
+  const res = await apiFetch('/users/me');
+  if (!res || !res.ok) { logout(); return; }
+  currentUser = await res.json();
+  document.getElementById('topbar-username').textContent = currentUser.username;
+  const roleEl = document.getElementById('topbar-role');
+  roleEl.textContent = currentUser.role;
+  roleEl.className = 'role-badge' + (currentUser.role === 'admin' ? ' admin' : '');
+  if (currentUser.role === 'admin') document.getElementById('admin-nav').style.display = 'flex';
+  document.getElementById('auth-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  loadDashboard(); loadThreats(); loadEvents();
+}
+
+// ── PAGES ────────────────────────────────────────────────────
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  event.currentTarget.classList.add('active');
+  if (name === 'admin') loadUsers();
+}
+
+// ── DASHBOARD ────────────────────────────────────────────────
+function refreshAll() {
+  loadDashboard();
+  loadThreats();
+  loadEvents();
+}
+
+// Auto refresh every 30 seconds
+setInterval(refreshAll, 30000);
+
+async function loadDashboard() {
+  const res = await apiFetch('/dashboard/');
+  if (!res || !res.ok) return;
+  const d = await res.json();
+  document.getElementById('s-threats').textContent  = d.threats.total;
+  document.getElementById('s-critical').textContent = d.threats.critical;
+  document.getElementById('s-open').textContent     = d.events.open;
+  document.getElementById('s-resolved').textContent = d.events.resolved + d.threats.resolved;
+  loadRecentEvents();
+}
+
+async function loadRecentEvents() {
+  const res = await apiFetch('/events/');
+  if (!res || !res.ok) return;
+  const data = await res.json();
+  const tbody = document.getElementById('recent-events-tbody');
+  if (!tbody) return;
+  const recent = data.slice(-5).reverse();
+  if (!recent.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No events yet — try wrong password 3 times to test auto-detection!</td></tr>'; return; }
+  tbody.innerHTML = recent.map(e => `
+    <tr>
+      <td style="font-weight:600">${e.event_type}</td>
+      <td style="color:var(--muted);font-size:13px">${e.description ? e.description.substring(0,60)+'...' : '-'}</td>
+      <td><span class="badge badge-${e.severity}">${e.severity}</span></td>
+      <td style="font-family:var(--font-mono);font-size:12px;color:var(--accent)">${e.source_ip || '—'}</td>
+      <td style="color:var(--muted);font-size:12px">${new Date(e.created_at).toLocaleTimeString()}</td>
+    </tr>`).join('');
+}
+
+// ── THREATS ──────────────────────────────────────────────────
+async function loadThreats() {
+  const res = await apiFetch('/threats/');
+  if (!res || !res.ok) return;
+  const data = await res.json();
+  const tbody = document.getElementById('threats-tbody');
+  if (!data.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No threats found</td></tr>'; return; }
+  tbody.innerHTML = data.map(t => `
+    <tr>
+      <td><span style="font-family:var(--font-mono);color:var(--muted)">#${t.id}</span></td>
+      <td style="font-weight:600">${t.title}</td>
+      <td><span class="badge badge-${t.severity}">${t.severity}</span></td>
+      <td><span class="badge badge-${t.status}">${t.status}</span></td>
+      <td style="color:var(--muted);font-size:13px">${new Date(t.created_at).toLocaleDateString()}</td>
+      <td><div class="action-btns">
+        <button class="btn sm danger" onclick="deleteThreat(${t.id})">Delete</button>
+      </div></td>
+    </tr>`).join('');
+}
+
+async function createThreat() {
+  const title = document.getElementById('t-title').value.trim();
+  const description = document.getElementById('t-desc').value.trim();
+  const severity = document.getElementById('t-severity').value;
+  const status = document.getElementById('t-status').value;
+
+  if (!title) { alert('Title is required'); return; }
+
+  const body = { title, description, severity, status };
+
+  try {
+    const res = await apiFetch('/threats/', { method:'POST', body:JSON.stringify(body) });
+    if (!res) { alert('No response from server. Are you logged in?'); return; }
+    const text = await res.text();
+    let data = {};
+    try { data = JSON.parse(text); } catch(e) { data = {detail: text}; }
+    if (res.ok) {
+      document.getElementById('t-title').value = '';
+      document.getElementById('t-desc').value = '';
+      alert('Threat submitted successfully!');
+      loadThreats();
+      loadDashboard();
+    } else {
+      alert('Error: ' + (typeof data.detail === 'string' ? data.detail : JSON.stringify(data) || text || res.status));
+    }
+  } catch(err) {
+    alert('Connection error: ' + err.message);
+  }
+}
+
+async function deleteThreat(id) {
+  if (!confirm('Delete this threat?')) return;
+  await apiFetch('/threats/'+id, { method:'DELETE' });
+  loadThreats(); loadDashboard();
+}
+
+// ── EVENTS ───────────────────────────────────────────────────
+async function loadEvents() {
+  const res = await apiFetch('/events/');
+  if (!res || !res.ok) return;
+  const data = await res.json();
+  const tbody = document.getElementById('events-tbody');
+  if (!data.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No events logged</td></tr>'; return; }
+  tbody.innerHTML = data.map(e => `
+    <tr>
+      <td><span style="font-family:var(--font-mono);color:var(--muted)">#${e.id}</span></td>
+      <td style="font-weight:600">${e.event_type}</td>
+      <td style="font-family:var(--font-mono);font-size:12px;color:var(--muted)">${e.source_ip || '—'}</td>
+      <td><span class="badge badge-${e.severity}">${e.severity}</span></td>
+      <td><span class="badge badge-${e.status}">${e.status}</span></td>
+      <td style="color:var(--muted);font-size:13px">${new Date(e.created_at).toLocaleDateString()}</td>
+      <td><div class="action-btns">
+        <button class="btn sm" onclick="resolveEvent(${e.id})">Resolve</button>
+        <button class="btn sm danger" onclick="deleteEvent(${e.id})">Delete</button>
+      </div></td>
+    </tr>`).join('');
+}
+
+async function logSecurityEvent() {
+  const event_type = document.getElementById('e-type').value.trim();
+  const description = document.getElementById('e-desc').value.trim();
+  const severity = document.getElementById('e-severity').value;
+  const source_ip = document.getElementById('e-ip').value.trim() || null;
+
+  if (!event_type) { alert('Event type is required'); return; }
+
+  const body = { event_type, description, severity, source_ip };
+
+  try {
+    const res = await apiFetch('/events/', { method:'POST', body:JSON.stringify(body) });
+    if (!res) { alert('No response from server. Are you logged in?'); return; }
+    const text = await res.text();
+    let data = {};
+    try { data = JSON.parse(text); } catch(e) { data = {detail: text}; }
+    if (res.ok) {
+      document.getElementById('e-type').value = '';
+      document.getElementById('e-desc').value = '';
+      document.getElementById('e-ip').value = '';
+      alert('Event logged successfully!');
+      loadEvents();
+      loadDashboard();
+    } else {
+      alert('Error: ' + (typeof data.detail === 'string' ? data.detail : JSON.stringify(data) || text || res.status));
+    }
+  } catch(err) {
+    alert('Connection error: ' + err.message);
+  }
+}
+
+async function resolveEvent(id) {
+  await apiFetch('/events/'+id, { method:'PUT', body:JSON.stringify({status:'resolved'}) });
+  loadEvents(); loadDashboard();
+}
+
+async function deleteEvent(id) {
+  if (!confirm('Delete this event?')) return;
+  await apiFetch('/events/'+id, { method:'DELETE' });
+  loadEvents(); loadDashboard();
+}
+
+// ── PROFILE ──────────────────────────────────────────────────
+async function updateProfile() {
+  hideMsg('profile-msg');
+  const body = {};
+  const u = document.getElementById('p-username').value;
+  const e = document.getElementById('p-email').value;
+  const p = document.getElementById('p-pass').value;
+  if (u) body.username = u;
+  if (e) body.email = e;
+  if (p) body.password = p;
+  if (!Object.keys(body).length) return showMsg('profile-msg','Nothing to update','error');
+  const res = await apiFetch('/users/me', { method:'PUT', body:JSON.stringify(body) });
+  const data = await res.json();
+  if (res.ok) { showMsg('profile-msg','Profile updated!','ok'); document.getElementById('topbar-username').textContent = data.username; }
+  else showMsg('profile-msg', typeof data.detail === 'string' ? data.detail : JSON.stringify(data) || 'Update failed');
+}
+
+// ── ADMIN ────────────────────────────────────────────────────
+async function loadUsers() {
+  const res = await apiFetch('/users/');
+  if (!res || !res.ok) return;
+  const data = await res.json();
+  const tbody = document.getElementById('users-tbody');
+  tbody.innerHTML = data.map(u => `
+    <tr>
+      <td><span style="font-family:var(--font-mono);color:var(--muted)">#${u.id}</span></td>
+      <td style="font-weight:600">${u.username}</td>
+      <td style="color:var(--muted)">${u.email}</td>
+      <td><span class="badge badge-${u.role}">${u.role}</span></td>
+      <td><span class="badge" style="${u.is_active?'color:var(--accent3)':'color:var(--muted)'}">${u.is_active?'Active':'Inactive'}</span></td>
+      <td><div class="action-btns">
+        ${u.role!=='admin'?`<button class="btn sm" onclick="makeAdmin(${u.id})">Make Admin</button>`:''}
+        ${u.is_active&&u.id!==currentUser.id?`<button class="btn sm danger" onclick="deactivateUser(${u.id})">Deactivate</button>`:''}
+      </div></td>
+    </tr>`).join('');
+}
+
+async function makeAdmin(id) {
+  if (!confirm('Promote this user to Admin?')) return;
+  await apiFetch('/users/'+id+'/make-admin', { method:'PUT' });
+  loadUsers();
+}
+
+async function deactivateUser(id) {
+  if (!confirm('Deactivate this user?')) return;
+  await apiFetch('/users/'+id+'/deactivate', { method:'PUT' });
+  loadUsers();
+}
+</script>
+</body>
+</html>
